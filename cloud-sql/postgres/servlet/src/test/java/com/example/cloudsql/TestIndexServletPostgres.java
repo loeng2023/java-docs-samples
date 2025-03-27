@@ -32,9 +32,9 @@ import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import javax.sql.DataSource;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -44,7 +44,7 @@ import org.junit.Test;
 public class TestIndexServletPostgres {
 
   private static List<String> requiredEnvVars =
-      Arrays.asList("PG_USER", "PG_PASS", "PG_DB", "PG_CONNECTION_NAME");
+      Arrays.asList("DB_USER", "DB_PASS", "DB_NAME", "INSTANCE_CONNECTION_NAME");
 
   private static DataSource pool;
   private static String tableName;
@@ -60,7 +60,7 @@ public class TestIndexServletPostgres {
 
   private static void createTable(DataSource pool) throws SQLException {
     // Safely attempt to create the table schema.
-    tableName = String.format("votes_%s", UUID.randomUUID().toString().replace("-", ""));
+    tableName = "votes";
     try (Connection conn = pool.getConnection()) {
       String stmt =
           "CREATE TABLE IF NOT EXISTS "
@@ -80,11 +80,11 @@ public class TestIndexServletPostgres {
     checkEnvVars();
     HikariConfig config = new HikariConfig();
 
-    config.setJdbcUrl(String.format("jdbc:postgresql:///%s", System.getenv("PG_DB")));
-    config.setUsername(System.getenv("PG_USER")); // e.g. "root", "mysql"
-    config.setPassword(System.getenv("PG_PASS")); // e.g. "my-password"
+    config.setJdbcUrl(String.format("jdbc:postgresql:///%s", System.getenv("DB_NAME")));
+    config.setUsername(System.getenv("DB_USER")); // e.g. "root", "mysql"
+    config.setPassword(System.getenv("DB_PASS")); // e.g. "my-password"
     config.addDataSourceProperty("socketFactory", "com.google.cloud.sql.postgres.SocketFactory");
-    config.addDataSourceProperty("cloudSqlInstance", System.getenv("PG_CONNECTION_NAME"));
+    config.addDataSourceProperty("cloudSqlInstance", System.getenv("INSTANCE_CONNECTION_NAME"));
 
     pool = new HikariDataSource(config);
     createTable(pool);
