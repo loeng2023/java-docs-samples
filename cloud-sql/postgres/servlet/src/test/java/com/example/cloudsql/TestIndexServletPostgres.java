@@ -29,9 +29,15 @@ import java.io.StringWriter;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -85,7 +91,10 @@ public class TestIndexServletPostgres {
     config.setPassword(System.getenv("DB_PASS")); // e.g. "my-password"
     config.addDataSourceProperty("socketFactory", "com.google.cloud.sql.postgres.SocketFactory");
     config.addDataSourceProperty("cloudSqlInstance", System.getenv("INSTANCE_CONNECTION_NAME"));
-
+    // Add this line to set the maximum pool size
+    config.setMaximumPoolSize(2000); // Set it to the number of concurrent connections you want to test
+    config.setConnectionTimeout(1200000);
+    config.setMinimumIdle(2000);
     pool = new HikariDataSource(config);
     createTable(pool);
 
@@ -128,5 +137,48 @@ public class TestIndexServletPostgres {
 
     writer.flush();
     assertTrue(stringWriter.toString().contains("Vote successfully cast for"));
+  }
+
+  @Test
+  public void testConcurrentConnections() throws Exception {
+    int numConnections = 2000;
+    ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+    List<Future<Boolean>> futures = new ArrayList<>();
+    int sleepMillis = 300000; // Increased sleep duration
+
+    for (int i = 0; i < numConnections; i++) {
+      futures.add(executorService.submit(new Callable<Boolean>() {
+        @Override
+        public Boolean call() throws Exception {
+          try (Connection connection = pool.getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement("SELECT 1;")) {
+              statement.execute();
+            }
+            TimeUnit.MILLISECONDS.sleep(sleepMillis);
+            return true;
+          } catch (SQLException e) {
+            // Log the exception for debugging if needed
+            System.err.println("Error getting connection: " + e.getMessage());
+            return false;
+          }
+        }
+      }));
+    }
+
+    executorService.shutdown();
+    assertTrue("Executor service did not shut down in time", executorService.awaitTermination(1800, TimeUnit.SECONDS));
+
+    long successfulConnections = futures.stream().filter(future -> {
+      try {
+        return future.get();
+      } catch (Exception e) {
+        return false;
+      }
+    }).count();
+
+    assertTrue(
+        String.format("Failed to establish %d concurrent connections. Only %d succeeded.",
+            numConnections, successfulConnections),
+        successfulConnections >= numConnections); // You might want to adjust the assertion based on expected behavior
   }
 }
